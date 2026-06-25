@@ -35,7 +35,7 @@ type Card = {
   tags: string[] | null;
 };
 
-type CardInsert = {
+type CardPayload = {
   room_id: string;
   target_user: "glenn" | "me" | "both";
   card_type: "japanese" | "english" | "both";
@@ -63,6 +63,9 @@ type TargetFilter = "all" | "glenn" | "me" | "both";
 type StatusFilter = "all" | "new" | "practicing" | "learned";
 
 const LAST_ROOM_KEY = "talkbridge:lastRoom";
+
+const cardSelect =
+  "id, room_id, target_user, card_type, japanese_text, romaji, english_meaning, japanese_intent, english_attempt, natural_english, casual_english, pronunciation_note, pronunciation_chunks, usage_note, meaning_note, status, tags";
 
 function saveLastRoom(room: { id: string; name: string }) {
   if (typeof window === "undefined") return;
@@ -151,9 +154,6 @@ function FilterButton({
   );
 }
 
-const cardSelect =
-  "id, room_id, target_user, card_type, japanese_text, romaji, english_meaning, japanese_intent, english_attempt, natural_english, casual_english, pronunciation_note, pronunciation_chunks, usage_note, meaning_note, status, tags";
-
 export default function RoomPage() {
   const params = useParams<{ roomId: string }>();
   const roomId = params.roomId;
@@ -166,11 +166,16 @@ export default function RoomPage() {
   const [cards, setCards] = useState<Card[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [copyMessage, setCopyMessage] = useState("");
+
   const [showAddForm, setShowAddForm] = useState(false);
+  const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [cardMode, setCardMode] = useState<CardMode>("japanese");
+
   const [targetFilter, setTargetFilter] = useState<TargetFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+
   const [isSaving, setIsSaving] = useState(false);
+  const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
 
   const [japaneseText, setJapaneseText] = useState("");
@@ -253,6 +258,96 @@ export default function RoomPage() {
 
     setTagsText("");
     setErrorMessage("");
+    setEditingCardId(null);
+  }
+
+  function openCreateForm() {
+    resetForm();
+    setCardMode("japanese");
+    setShowAddForm(true);
+  }
+
+  function closeForm() {
+    resetForm();
+    setShowAddForm(false);
+  }
+
+  function startEditingCard(card: Card) {
+    setEditingCardId(card.id);
+    setCardMode(card.card_type === "english" ? "english" : "japanese");
+
+    setJapaneseText(card.japanese_text ?? "");
+    setEnglishMeaning(card.english_meaning ?? "");
+    setPronunciationNote(card.pronunciation_note ?? "");
+    setUsageNote(card.usage_note ?? "");
+
+    setJapaneseIntent(card.japanese_intent ?? "");
+    setEnglishAttempt(card.english_attempt ?? "");
+    setNaturalEnglish(card.natural_english ?? "");
+    setCasualEnglish(card.casual_english ?? "");
+    setPronunciationChunks(card.pronunciation_chunks ?? "");
+    setMeaningNote(card.meaning_note ?? "");
+
+    setTagsText(card.tags?.join(", ") ?? "");
+    setErrorMessage("");
+    setShowAddForm(true);
+
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function buildCardPayload(status: Card["status"] = "new"): CardPayload {
+    const tags = tagsText
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+
+    if (cardMode === "japanese") {
+      return {
+        room_id: roomId,
+        target_user: "glenn",
+        card_type: "japanese",
+
+        japanese_text: japaneseText.trim(),
+        romaji,
+        english_meaning: englishMeaning.trim(),
+
+        japanese_intent: null,
+        english_attempt: null,
+        natural_english: null,
+        casual_english: null,
+
+        pronunciation_note: pronunciationNote.trim(),
+        pronunciation_chunks: null,
+        usage_note: usageNote.trim(),
+        meaning_note: null,
+
+        tags,
+        status,
+      };
+    }
+
+    return {
+      room_id: roomId,
+      target_user: "me",
+      card_type: "english",
+
+      japanese_text: null,
+      romaji: null,
+      english_meaning: null,
+
+      japanese_intent: japaneseIntent.trim(),
+      english_attempt: englishAttempt.trim(),
+      natural_english: naturalEnglish.trim(),
+      casual_english: casualEnglish.trim(),
+
+      pronunciation_note: null,
+      pronunciation_chunks: pronunciationChunks.trim(),
+      usage_note: null,
+      meaning_note: meaningNote.trim(),
+
+      tags,
+      status,
+    };
   }
 
   async function copyRoomLink() {
@@ -293,61 +388,39 @@ export default function RoomPage() {
     setIsSaving(true);
     setErrorMessage("");
 
-    const tags = tagsText
-      .split(",")
-      .map((tag) => tag.trim())
-      .filter(Boolean);
+    if (editingCardId) {
+      const currentCard = cards.find((card) => card.id === editingCardId);
+      const payload = buildCardPayload(currentCard?.status ?? "new");
 
-    const insertData: CardInsert =
-      cardMode === "japanese"
-        ? {
-            room_id: roomId,
-            target_user: "glenn",
-            card_type: "japanese",
+      const { data, error } = await supabase
+        .from("cards")
+        .update(payload)
+        .eq("id", editingCardId)
+        .select(cardSelect)
+        .single();
 
-            japanese_text: japaneseText.trim(),
-            romaji,
-            english_meaning: englishMeaning.trim(),
+      if (error) {
+        console.error(error);
+        setErrorMessage("Failed to update card. Please try again.");
+        setIsSaving(false);
+        return;
+      }
 
-            japanese_intent: null,
-            english_attempt: null,
-            natural_english: null,
-            casual_english: null,
+      setCards((current) =>
+        current.map((card) => (card.id === editingCardId ? (data as Card) : card))
+      );
 
-            pronunciation_note: pronunciationNote.trim(),
-            pronunciation_chunks: null,
-            usage_note: usageNote.trim(),
-            meaning_note: null,
+      resetForm();
+      setShowAddForm(false);
+      setIsSaving(false);
+      return;
+    }
 
-            tags,
-            status: "new",
-          }
-        : {
-            room_id: roomId,
-            target_user: "me",
-            card_type: "english",
-
-            japanese_text: null,
-            romaji: null,
-            english_meaning: null,
-
-            japanese_intent: japaneseIntent.trim(),
-            english_attempt: englishAttempt.trim(),
-            natural_english: naturalEnglish.trim(),
-            casual_english: casualEnglish.trim(),
-
-            pronunciation_note: null,
-            pronunciation_chunks: pronunciationChunks.trim(),
-            usage_note: null,
-            meaning_note: meaningNote.trim(),
-
-            tags,
-            status: "new",
-          };
+    const payload = buildCardPayload("new");
 
     const { data, error } = await supabase
       .from("cards")
-      .insert(insertData)
+      .insert(payload)
       .select(cardSelect)
       .single();
 
@@ -387,6 +460,30 @@ export default function RoomPage() {
         )
       );
     }
+  }
+
+  async function deleteCard(cardId: string) {
+    const confirmed = window.confirm("Delete this card?");
+    if (!confirmed) return;
+
+    setDeletingCardId(cardId);
+
+    const { error } = await supabase.from("cards").delete().eq("id", cardId);
+
+    if (error) {
+      console.error(error);
+      setDeletingCardId(null);
+      return;
+    }
+
+    setCards((current) => current.filter((card) => card.id !== cardId));
+
+    if (editingCardId === cardId) {
+      resetForm();
+      setShowAddForm(false);
+    }
+
+    setDeletingCardId(null);
   }
 
   const canSave =
@@ -481,8 +578,11 @@ export default function RoomPage() {
 
             <button
               onClick={() => {
-                setShowAddForm((current) => !current);
-                setErrorMessage("");
+                if (showAddForm) {
+                  closeForm();
+                } else {
+                  openCreateForm();
+                }
               }}
               className="rounded-2xl bg-stone-100 px-4 py-2 text-sm font-semibold text-stone-800"
             >
@@ -557,14 +657,32 @@ export default function RoomPage() {
 
         {showAddForm ? (
           <section className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-stone-200">
-            <p className="text-sm font-semibold text-stone-800">Add Card</p>
-            <p className="mt-1 text-sm text-stone-500">
-              Save phrases for Japanese and English practice.
-            </p>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-stone-800">
+                  {editingCardId ? "Edit Card" : "Add Card"}
+                </p>
+                <p className="mt-1 text-sm text-stone-500">
+                  {editingCardId
+                    ? "Update this saved phrase card."
+                    : "Save phrases for Japanese and English practice."}
+                </p>
+              </div>
+
+              {editingCardId ? (
+                <button
+                  onClick={closeForm}
+                  className="rounded-2xl bg-stone-100 px-4 py-2 text-sm font-semibold text-stone-800"
+                >
+                  Cancel
+                </button>
+              ) : null}
+            </div>
 
             <div className="mt-5 grid grid-cols-2 gap-2 rounded-2xl bg-stone-100 p-1">
               <button
                 onClick={() => {
+                  if (editingCardId) return;
                   setCardMode("japanese");
                   setErrorMessage("");
                 }}
@@ -578,6 +696,7 @@ export default function RoomPage() {
               </button>
               <button
                 onClick={() => {
+                  if (editingCardId) return;
                   setCardMode("english");
                   setErrorMessage("");
                 }}
@@ -590,6 +709,13 @@ export default function RoomPage() {
                 English
               </button>
             </div>
+
+            {editingCardId ? (
+              <p className="mt-3 text-xs leading-5 text-stone-500">
+                Card type is locked while editing. Delete and recreate the card
+                if you need to change Japanese/English type.
+              </p>
+            ) : null}
 
             {cardMode === "japanese" ? (
               <>
@@ -733,9 +859,11 @@ export default function RoomPage() {
             >
               {isSaving
                 ? "Saving..."
-                : cardMode === "japanese"
-                  ? "Save Japanese card"
-                  : "Save English card"}
+                : editingCardId
+                  ? "Update card"
+                  : cardMode === "japanese"
+                    ? "Save Japanese card"
+                    : "Save English card"}
             </button>
           </section>
         ) : null}
@@ -847,6 +975,23 @@ export default function RoomPage() {
                   ))}
                 </div>
               ) : null}
+
+              <div className="mt-5 grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => startEditingCard(card)}
+                  className="rounded-2xl bg-stone-100 px-4 py-2 text-sm font-semibold text-stone-800"
+                >
+                  Edit
+                </button>
+
+                <button
+                  onClick={() => deleteCard(card.id)}
+                  disabled={deletingCardId === card.id}
+                  className="rounded-2xl bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 disabled:opacity-50"
+                >
+                  {deletingCardId === card.id ? "Deleting..." : "Delete"}
+                </button>
+              </div>
             </article>
           ))}
 
