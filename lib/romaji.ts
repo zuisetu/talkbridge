@@ -16,6 +16,7 @@ const baseMap: Record<string, string> = {
   ぱ: "pa", ぴ: "pi", ぷ: "pu", ぺ: "pe", ぽ: "po",
   ぁ: "a", ぃ: "i", ぅ: "u", ぇ: "e", ぉ: "o",
   ゃ: "ya", ゅ: "yu", ょ: "yo",
+  ゔ: "vu",
 };
 
 const comboMap: Record<string, string> = {
@@ -30,6 +31,11 @@ const comboMap: Record<string, string> = {
   じゃ: "ja", じゅ: "ju", じょ: "jo",
   びゃ: "bya", びゅ: "byu", びょ: "byo",
   ぴゃ: "pya", ぴゅ: "pyu", ぴょ: "pyo",
+
+  ふぁ: "fa", ふぃ: "fi", ふぇ: "fe", ふぉ: "fo",
+  てぃ: "ti", とぅ: "tu",
+  でぃ: "di", どぅ: "du",
+  うぃ: "wi", うぇ: "we", うぉ: "wo",
 };
 
 const vowelPattern = /[aeiou]$/;
@@ -49,9 +55,14 @@ function lastVowel(value: string) {
   return value.match(vowelPattern)?.[0] ?? "";
 }
 
-export function toRomaji(input: string) {
+export type RomajiToken = {
+  kana: string;
+  romaji: string;
+};
+
+export function toRomajiTokens(input: string): RomajiToken[] {
   const text = kataToHira(input.trim());
-  let result = "";
+  const tokens: RomajiToken[] = [];
 
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
@@ -59,24 +70,43 @@ export function toRomaji(input: string) {
     if (char === "っ") {
       const combo = comboMap[text.slice(i + 1, i + 3)];
       const next = combo ?? baseMap[text[i + 1]];
-      result += firstConsonant(next ?? "");
+      tokens.push({
+        kana: char,
+        romaji: firstConsonant(next ?? ""),
+      });
       continue;
     }
 
     if (char === "ー") {
-      result += lastVowel(result);
+      const previous = tokens[tokens.length - 1]?.romaji ?? "";
+      tokens.push({
+        kana: char,
+        romaji: lastVowel(previous),
+      });
       continue;
     }
 
     const combo = comboMap[text.slice(i, i + 2)];
     if (combo) {
-      result += combo;
+      tokens.push({
+        kana: text.slice(i, i + 2),
+        romaji: combo,
+      });
       i++;
       continue;
     }
 
-    result += baseMap[char] ?? char;
+    tokens.push({
+      kana: char,
+      romaji: baseMap[char] ?? char,
+    });
   }
 
-  return result;
+  return tokens;
+}
+
+export function toRomaji(input: string) {
+  return toRomajiTokens(input)
+    .map((token) => token.romaji)
+    .join("");
 }

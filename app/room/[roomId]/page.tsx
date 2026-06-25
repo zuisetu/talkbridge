@@ -1,6 +1,6 @@
 "use client";
 
-import { toRomaji } from "@/lib/romaji";
+import { toRomaji, toRomajiTokens } from "@/lib/romaji";
 import { supabase } from "@/lib/supabase";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -23,6 +23,46 @@ type Card = {
   status: "new" | "practicing" | "learned";
   tags: string[] | null;
 };
+
+function KanaRomajiLine({
+  text,
+  size = "large",
+}: {
+  text: string;
+  size?: "large" | "small";
+}) {
+  const tokens = toRomajiTokens(text);
+
+  return (
+    <div className="flex flex-wrap gap-x-3 gap-y-3">
+      {tokens.map((token, index) => (
+        <div
+          key={`${token.kana}-${index}`}
+          className="flex min-w-8 flex-col items-center"
+        >
+          <span
+            className={
+              size === "large"
+                ? "text-3xl font-bold leading-none text-stone-900"
+                : "text-2xl font-bold leading-none text-stone-900"
+            }
+          >
+            {token.kana}
+          </span>
+          <span
+            className={
+              size === "large"
+                ? "mt-2 text-sm font-semibold leading-none text-stone-500"
+                : "mt-2 text-xs font-semibold leading-none text-stone-500"
+            }
+          >
+            {token.romaji}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function RoomPage() {
   const params = useParams<{ roomId: string }>();
@@ -215,10 +255,16 @@ export default function RoomPage() {
             />
 
             <label className="mt-4 block text-sm font-semibold text-stone-700">
-              Romaji
+              Romaji guide
             </label>
-            <div className="mt-2 rounded-2xl bg-stone-100 px-4 py-3 text-base text-stone-700">
-              {romaji || "Auto-generated from kana"}
+            <div className="mt-2 rounded-2xl bg-stone-100 px-4 py-3">
+              {japaneseText ? (
+                <KanaRomajiLine text={japaneseText} size="small" />
+              ) : (
+                <p className="text-base text-stone-500">
+                  Auto-generated from kana
+                </p>
+              )}
             </div>
 
             <label className="mt-4 block text-sm font-semibold text-stone-700">
@@ -290,16 +336,21 @@ export default function RoomPage() {
                 </p>
               </div>
 
-              <p className="mt-4 text-3xl font-bold text-stone-900">
-                {card.japanese_text}
-              </p>
-              <p className="mt-2 text-lg font-semibold text-stone-500">
-                {card.romaji}
-              </p>
+              {card.japanese_text ? (
+                <div className="mt-5">
+                  <KanaRomajiLine text={card.japanese_text} />
+                </div>
+              ) : null}
 
               {card.english_meaning ? (
-                <p className="mt-4 text-base text-stone-700">
+                <p className="mt-5 text-base text-stone-700">
                   {card.english_meaning}
+                </p>
+              ) : null}
+
+              {card.pronunciation_note ? (
+                <p className="mt-3 text-sm leading-6 text-stone-500">
+                  {card.pronunciation_note}
                 </p>
               ) : null}
 
