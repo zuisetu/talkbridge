@@ -59,7 +59,7 @@ type CardPayload = {
 };
 
 type CardMode = "japanese" | "english";
-type TargetFilter = "all" | "glenn" | "me" | "both";
+type LanguageFilter = "all" | "ja" | "en";
 type StatusFilter = "all" | "new" | "practicing" | "learned";
 
 const LAST_ROOM_KEY = "talkbridge:lastRoom";
@@ -125,10 +125,10 @@ function getNextStatus(status: Card["status"]): Card["status"] {
   return "new";
 }
 
-function getTargetLabel(targetUser: Card["target_user"]) {
-  if (targetUser === "glenn") return "For Glenn";
-  if (targetUser === "me") return "For Me";
-  return "For Both";
+function getCardLabel(cardType: Card["card_type"]) {
+  if (cardType === "japanese") return "JA";
+  if (cardType === "english") return "EN";
+  return "BOTH";
 }
 
 function FilterButton({
@@ -171,7 +171,7 @@ export default function RoomPage() {
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [cardMode, setCardMode] = useState<CardMode>("japanese");
 
-  const [targetFilter, setTargetFilter] = useState<TargetFilter>("all");
+  const [languageFilter, setLanguageFilter] = useState<LanguageFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
   const [isSaving, setIsSaving] = useState(false);
@@ -195,12 +195,15 @@ export default function RoomPage() {
   const romaji = toRomaji(japaneseText);
 
   const filteredCards = cards.filter((card) => {
-    const targetMatches =
-      targetFilter === "all" || card.target_user === targetFilter;
+    const languageMatches =
+      languageFilter === "all" ||
+      (languageFilter === "ja" && card.card_type === "japanese") ||
+      (languageFilter === "en" && card.card_type === "english");
+
     const statusMatches =
       statusFilter === "all" || card.status === statusFilter;
 
-    return targetMatches && statusMatches;
+    return languageMatches && statusMatches;
   });
 
   useEffect(() => {
@@ -407,7 +410,9 @@ export default function RoomPage() {
       }
 
       setCards((current) =>
-        current.map((card) => (card.id === editingCardId ? (data as Card) : card))
+        current.map((card) =>
+          card.id === editingCardId ? (data as Card) : card
+        )
       );
 
       resetForm();
@@ -592,32 +597,26 @@ export default function RoomPage() {
 
           <div className="mt-5">
             <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">
-              Target
+              Language
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               <FilterButton
-                active={targetFilter === "all"}
-                onClick={() => setTargetFilter("all")}
+                active={languageFilter === "all"}
+                onClick={() => setLanguageFilter("all")}
               >
                 All
               </FilterButton>
               <FilterButton
-                active={targetFilter === "glenn"}
-                onClick={() => setTargetFilter("glenn")}
+                active={languageFilter === "ja"}
+                onClick={() => setLanguageFilter("ja")}
               >
-                Glenn
+                JA
               </FilterButton>
               <FilterButton
-                active={targetFilter === "me"}
-                onClick={() => setTargetFilter("me")}
+                active={languageFilter === "en"}
+                onClick={() => setLanguageFilter("en")}
               >
-                Me
-              </FilterButton>
-              <FilterButton
-                active={targetFilter === "both"}
-                onClick={() => setTargetFilter("both")}
-              >
-                Both
+                EN
               </FilterButton>
             </div>
           </div>
@@ -692,7 +691,7 @@ export default function RoomPage() {
                     : "rounded-xl px-3 py-2 text-sm font-semibold text-stone-500"
                 }
               >
-                Japanese
+                JA
               </button>
               <button
                 onClick={() => {
@@ -706,14 +705,14 @@ export default function RoomPage() {
                     : "rounded-xl px-3 py-2 text-sm font-semibold text-stone-500"
                 }
               >
-                English
+                EN
               </button>
             </div>
 
             {editingCardId ? (
               <p className="mt-3 text-xs leading-5 text-stone-500">
-                Card type is locked while editing. Delete and recreate the card
-                if you need to change Japanese/English type.
+                Card language is locked while editing. Delete and recreate the
+                card if you need to change JA/EN.
               </p>
             ) : null}
 
@@ -862,8 +861,8 @@ export default function RoomPage() {
                 : editingCardId
                   ? "Update card"
                   : cardMode === "japanese"
-                    ? "Save Japanese card"
-                    : "Save English card"}
+                    ? "Save JA card"
+                    : "Save EN card"}
             </button>
           </section>
         ) : null}
@@ -876,7 +875,7 @@ export default function RoomPage() {
             >
               <div className="flex items-center justify-between gap-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">
-                  {getTargetLabel(card.target_user)}
+                  {getCardLabel(card.card_type)}
                 </p>
 
                 <button
