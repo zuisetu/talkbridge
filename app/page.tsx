@@ -3,7 +3,14 @@
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+type LastRoom = {
+  id: string;
+  name: string;
+};
+
+const LAST_ROOM_KEY = "talkbridge:lastRoom";
 
 function extractRoomId(input: string) {
   const value = input.trim();
@@ -18,17 +25,53 @@ function extractRoomId(input: string) {
   return value;
 }
 
+function readLastRoom(): LastRoom | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = window.localStorage.getItem(LAST_ROOM_KEY);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as LastRoom;
+    if (!parsed.id) return null;
+
+    return {
+      id: parsed.id,
+      name: parsed.name || "TalkBridge Room",
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveLastRoom(room: LastRoom) {
+  if (typeof window === "undefined") return;
+
+  window.localStorage.setItem(
+    LAST_ROOM_KEY,
+    JSON.stringify({
+      id: room.id,
+      name: room.name || "TalkBridge Room",
+    })
+  );
+}
+
 export default function Home() {
   const router = useRouter();
 
   const [roomName, setRoomName] = useState("TalkBridge Room");
   const [existingRoomInput, setExistingRoomInput] = useState("");
+  const [lastRoom, setLastRoom] = useState<LastRoom | null>(null);
 
   const [isCreating, setIsCreating] = useState(false);
   const [isOpening, setIsOpening] = useState(false);
 
   const [createErrorMessage, setCreateErrorMessage] = useState("");
   const [openErrorMessage, setOpenErrorMessage] = useState("");
+
+  useEffect(() => {
+    setLastRoom(readLastRoom());
+  }, []);
 
   async function createRoom() {
     setIsCreating(true);
@@ -40,6 +83,7 @@ export default function Home() {
     const { error } = await supabase.from("rooms").insert({
       id: roomId,
       name,
+      memo: "",
     });
 
     if (error) {
@@ -49,6 +93,7 @@ export default function Home() {
       return;
     }
 
+    saveLastRoom({ id: roomId, name });
     router.push(`/room/${roomId}`);
   }
 
@@ -66,7 +111,7 @@ export default function Home() {
 
     const { data, error } = await supabase
       .from("rooms")
-      .select("id")
+      .select("id, name")
       .eq("id", roomId)
       .single();
 
@@ -77,7 +122,17 @@ export default function Home() {
       return;
     }
 
+    saveLastRoom({
+      id: data.id,
+      name: data.name || "TalkBridge Room",
+    });
+
     router.push(`/room/${roomId}`);
+  }
+
+  function openLastRoom() {
+    if (!lastRoom) return;
+    router.push(`/room/${lastRoom.id}`);
   }
 
   return (
@@ -93,6 +148,33 @@ export default function Home() {
             for video call practice.
           </p>
         </section>
+
+        {lastRoom ? (
+          <section className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-stone-200">
+            <p className="text-sm font-semibold text-stone-800">
+              Continue last room
+            </p>
+            <p className="mt-1 text-sm leading-6 text-stone-500">
+              Last opened room is saved on this device.
+            </p>
+
+            <div className="mt-4 rounded-2xl bg-stone-50 p-4 ring-1 ring-stone-200">
+              <p className="text-base font-semibold text-stone-900">
+                {lastRoom.name}
+              </p>
+              <p className="mt-2 break-all text-xs text-stone-500">
+                {lastRoom.id}
+              </p>
+            </div>
+
+            <button
+              onClick={openLastRoom}
+              className="mt-4 w-full rounded-2xl bg-stone-900 px-4 py-3 text-base font-semibold text-white"
+            >
+              Open last room
+            </button>
+          </section>
+        ) : null}
 
         <section className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-stone-200">
           <p className="text-sm font-semibold text-stone-800">

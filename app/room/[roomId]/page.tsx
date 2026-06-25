@@ -8,6 +8,7 @@ import { useEffect, useState, type ReactNode } from "react";
 type Room = {
   id: string;
   name: string;
+  memo: string | null;
 };
 
 type Card = {
@@ -60,6 +61,20 @@ type CardInsert = {
 type CardMode = "japanese" | "english";
 type TargetFilter = "all" | "glenn" | "me" | "both";
 type StatusFilter = "all" | "new" | "practicing" | "learned";
+
+const LAST_ROOM_KEY = "talkbridge:lastRoom";
+
+function saveLastRoom(room: { id: string; name: string }) {
+  if (typeof window === "undefined") return;
+
+  window.localStorage.setItem(
+    LAST_ROOM_KEY,
+    JSON.stringify({
+      id: room.id,
+      name: room.name || "TalkBridge Room",
+    })
+  );
+}
 
 function KanaRomajiLine({
   text,
@@ -144,6 +159,10 @@ export default function RoomPage() {
   const roomId = params.roomId;
 
   const [room, setRoom] = useState<Room | null>(null);
+  const [roomMemo, setRoomMemo] = useState("");
+  const [isSavingMemo, setIsSavingMemo] = useState(false);
+  const [memoMessage, setMemoMessage] = useState("");
+
   const [cards, setCards] = useState<Card[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [copyMessage, setCopyMessage] = useState("");
@@ -183,7 +202,7 @@ export default function RoomPage() {
     async function loadRoomAndCards() {
       const { data: roomData, error: roomError } = await supabase
         .from("rooms")
-        .select("id, name")
+        .select("id, name, memo")
         .eq("id", roomId)
         .single();
 
@@ -202,8 +221,16 @@ export default function RoomPage() {
       }
 
       setRoom(roomData);
+      setRoomMemo(roomData?.memo ?? "");
       setCards((cardData ?? []) as Card[]);
       setIsLoading(false);
+
+      if (roomData) {
+        saveLastRoom({
+          id: roomData.id,
+          name: roomData.name || "TalkBridge Room",
+        });
+      }
     }
 
     if (roomId) {
@@ -233,6 +260,33 @@ export default function RoomPage() {
     await navigator.clipboard.writeText(url);
     setCopyMessage("Room link copied");
     setTimeout(() => setCopyMessage(""), 2000);
+  }
+
+  async function saveRoomMemo() {
+    if (!room) return;
+
+    setIsSavingMemo(true);
+    setMemoMessage("");
+
+    const { error } = await supabase
+      .from("rooms")
+      .update({
+        memo: roomMemo,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", room.id);
+
+    if (error) {
+      console.error(error);
+      setMemoMessage("Failed to save memo.");
+      setIsSavingMemo(false);
+      return;
+    }
+
+    setRoom((current) => (current ? { ...current, memo: roomMemo } : current));
+    setMemoMessage("Memo saved");
+    setIsSavingMemo(false);
+    setTimeout(() => setMemoMessage(""), 2000);
   }
 
   async function saveCard() {
@@ -383,6 +437,35 @@ export default function RoomPage() {
           {copyMessage ? (
             <p className="mt-3 text-center text-sm text-stone-600">
               {copyMessage}
+            </p>
+          ) : null}
+        </section>
+
+        <section className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-stone-200">
+          <p className="text-sm font-semibold text-stone-800">Room memo</p>
+          <p className="mt-1 text-sm leading-6 text-stone-500">
+            Write what this room is for, what you are practicing, or the next
+            call theme.
+          </p>
+
+          <textarea
+            value={roomMemo}
+            onChange={(event) => setRoomMemo(event.target.value)}
+            className="mt-4 min-h-28 w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-base outline-none focus:border-stone-400"
+            placeholder="Example: Glenn Japanese basics / daily phrases / next call: greetings and food."
+          />
+
+          <button
+            onClick={saveRoomMemo}
+            disabled={isSavingMemo}
+            className="mt-4 w-full rounded-2xl bg-stone-100 px-4 py-3 text-base font-semibold text-stone-900 disabled:opacity-50"
+          >
+            {isSavingMemo ? "Saving..." : "Save memo"}
+          </button>
+
+          {memoMessage ? (
+            <p className="mt-3 text-center text-sm text-stone-600">
+              {memoMessage}
             </p>
           ) : null}
         </section>
