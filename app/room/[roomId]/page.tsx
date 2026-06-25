@@ -64,6 +64,12 @@ function KanaRomajiLine({
   );
 }
 
+function getNextStatus(status: Card["status"]): Card["status"] {
+  if (status === "new") return "practicing";
+  if (status === "practicing") return "learned";
+  return "new";
+}
+
 export default function RoomPage() {
   const params = useParams<{ roomId: string }>();
   const roomId = params.roomId;
@@ -168,6 +174,31 @@ export default function RoomPage() {
     setTagsText("");
     setShowAddForm(false);
     setIsSaving(false);
+  }
+
+  async function updateCardStatus(cardId: string, currentStatus: Card["status"]) {
+    const nextStatus = getNextStatus(currentStatus);
+
+    setCards((current) =>
+      current.map((card) =>
+        card.id === cardId ? { ...card, status: nextStatus } : card
+      )
+    );
+
+    const { error } = await supabase
+      .from("cards")
+      .update({ status: nextStatus })
+      .eq("id", cardId);
+
+    if (error) {
+      console.error(error);
+
+      setCards((current) =>
+        current.map((card) =>
+          card.id === cardId ? { ...card, status: currentStatus } : card
+        )
+      );
+    }
   }
 
   if (isLoading) {
@@ -331,9 +362,13 @@ export default function RoomPage() {
                 <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">
                   For Glenn
                 </p>
-                <p className="rounded-full bg-stone-100 px-3 py-1 text-xs font-semibold text-stone-600">
+
+                <button
+                  onClick={() => updateCardStatus(card.id, card.status)}
+                  className="rounded-full bg-stone-100 px-3 py-1 text-xs font-semibold text-stone-600"
+                >
                   {card.status}
-                </p>
+                </button>
               </div>
 
               {card.japanese_text ? (
