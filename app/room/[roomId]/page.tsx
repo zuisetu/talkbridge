@@ -3,7 +3,7 @@
 import { toRomaji, toRomajiTokens } from "@/lib/romaji";
 import { supabase } from "@/lib/supabase";
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 type Room = {
   id: string;
@@ -34,7 +34,32 @@ type Card = {
   tags: string[] | null;
 };
 
+type CardInsert = {
+  room_id: string;
+  target_user: "glenn" | "me" | "both";
+  card_type: "japanese" | "english" | "both";
+
+  japanese_text: string | null;
+  romaji: string | null;
+  english_meaning: string | null;
+
+  japanese_intent: string | null;
+  english_attempt: string | null;
+  natural_english: string | null;
+  casual_english: string | null;
+
+  pronunciation_note: string | null;
+  pronunciation_chunks: string | null;
+  usage_note: string | null;
+  meaning_note: string | null;
+
+  tags: string[];
+  status: "new" | "practicing" | "learned";
+};
+
 type CardMode = "japanese" | "english";
+type TargetFilter = "all" | "glenn" | "me" | "both";
+type StatusFilter = "all" | "new" | "practicing" | "learned";
 
 function KanaRomajiLine({
   text,
@@ -88,6 +113,32 @@ function getTargetLabel(targetUser: Card["target_user"]) {
   return "For Both";
 }
 
+function FilterButton({
+  active,
+  children,
+  onClick,
+}: {
+  active: boolean;
+  children: ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={
+        active
+          ? "rounded-full bg-stone-900 px-3 py-1.5 text-xs font-semibold text-white"
+          : "rounded-full bg-stone-100 px-3 py-1.5 text-xs font-semibold text-stone-600"
+      }
+    >
+      {children}
+    </button>
+  );
+}
+
+const cardSelect =
+  "id, room_id, target_user, card_type, japanese_text, romaji, english_meaning, japanese_intent, english_attempt, natural_english, casual_english, pronunciation_note, pronunciation_chunks, usage_note, meaning_note, status, tags";
+
 export default function RoomPage() {
   const params = useParams<{ roomId: string }>();
   const roomId = params.roomId;
@@ -98,6 +149,8 @@ export default function RoomPage() {
   const [copyMessage, setCopyMessage] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
   const [cardMode, setCardMode] = useState<CardMode>("japanese");
+  const [targetFilter, setTargetFilter] = useState<TargetFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -117,6 +170,15 @@ export default function RoomPage() {
 
   const romaji = toRomaji(japaneseText);
 
+  const filteredCards = cards.filter((card) => {
+    const targetMatches =
+      targetFilter === "all" || card.target_user === targetFilter;
+    const statusMatches =
+      statusFilter === "all" || card.status === statusFilter;
+
+    return targetMatches && statusMatches;
+  });
+
   useEffect(() => {
     async function loadRoomAndCards() {
       const { data: roomData, error: roomError } = await supabase
@@ -131,9 +193,7 @@ export default function RoomPage() {
 
       const { data: cardData, error: cardError } = await supabase
         .from("cards")
-        .select(
-          "id, room_id, target_user, card_type, japanese_text, romaji, english_meaning, japanese_intent, english_attempt, natural_english, casual_english, pronunciation_note, pronunciation_chunks, usage_note, meaning_note, status, tags"
-        )
+        .select(cardSelect)
         .eq("room_id", roomId)
         .order("created_at", { ascending: false });
 
@@ -142,7 +202,7 @@ export default function RoomPage() {
       }
 
       setRoom(roomData);
-      setCards(cardData ?? []);
+      setCards((cardData ?? []) as Card[]);
       setIsLoading(false);
     }
 
@@ -184,17 +244,27 @@ export default function RoomPage() {
       .map((tag) => tag.trim())
       .filter(Boolean);
 
-    const insertData =
+    const insertData: CardInsert =
       cardMode === "japanese"
         ? {
             room_id: roomId,
             target_user: "glenn",
             card_type: "japanese",
+
             japanese_text: japaneseText.trim(),
             romaji,
             english_meaning: englishMeaning.trim(),
+
+            japanese_intent: null,
+            english_attempt: null,
+            natural_english: null,
+            casual_english: null,
+
             pronunciation_note: pronunciationNote.trim(),
+            pronunciation_chunks: null,
             usage_note: usageNote.trim(),
+            meaning_note: null,
+
             tags,
             status: "new",
           }
@@ -202,12 +272,21 @@ export default function RoomPage() {
             room_id: roomId,
             target_user: "me",
             card_type: "english",
+
+            japanese_text: null,
+            romaji: null,
+            english_meaning: null,
+
             japanese_intent: japaneseIntent.trim(),
             english_attempt: englishAttempt.trim(),
             natural_english: naturalEnglish.trim(),
             casual_english: casualEnglish.trim(),
+
+            pronunciation_note: null,
             pronunciation_chunks: pronunciationChunks.trim(),
+            usage_note: null,
             meaning_note: meaningNote.trim(),
+
             tags,
             status: "new",
           };
@@ -215,9 +294,7 @@ export default function RoomPage() {
     const { data, error } = await supabase
       .from("cards")
       .insert(insertData)
-      .select(
-        "id, room_id, target_user, card_type, japanese_text, romaji, english_meaning, japanese_intent, english_attempt, natural_english, casual_english, pronunciation_note, pronunciation_chunks, usage_note, meaning_note, status, tags"
-      )
+      .select(cardSelect)
       .single();
 
     if (error) {
@@ -227,7 +304,7 @@ export default function RoomPage() {
       return;
     }
 
-    setCards((current) => [data, ...current]);
+    setCards((current) => [data as Card, ...current]);
     resetForm();
     setShowAddForm(false);
     setIsSaving(false);
@@ -315,7 +392,7 @@ export default function RoomPage() {
             <div>
               <p className="text-sm font-semibold text-stone-800">Cards</p>
               <p className="mt-1 text-sm text-stone-500">
-                Japanese and English cards will appear here.
+                {filteredCards.length} shown / {cards.length} total
               </p>
             </div>
 
@@ -328,6 +405,70 @@ export default function RoomPage() {
             >
               {showAddForm ? "Close" : "Add"}
             </button>
+          </div>
+
+          <div className="mt-5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">
+              Target
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <FilterButton
+                active={targetFilter === "all"}
+                onClick={() => setTargetFilter("all")}
+              >
+                All
+              </FilterButton>
+              <FilterButton
+                active={targetFilter === "glenn"}
+                onClick={() => setTargetFilter("glenn")}
+              >
+                Glenn
+              </FilterButton>
+              <FilterButton
+                active={targetFilter === "me"}
+                onClick={() => setTargetFilter("me")}
+              >
+                Me
+              </FilterButton>
+              <FilterButton
+                active={targetFilter === "both"}
+                onClick={() => setTargetFilter("both")}
+              >
+                Both
+              </FilterButton>
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">
+              Status
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <FilterButton
+                active={statusFilter === "all"}
+                onClick={() => setStatusFilter("all")}
+              >
+                All
+              </FilterButton>
+              <FilterButton
+                active={statusFilter === "new"}
+                onClick={() => setStatusFilter("new")}
+              >
+                New
+              </FilterButton>
+              <FilterButton
+                active={statusFilter === "practicing"}
+                onClick={() => setStatusFilter("practicing")}
+              >
+                Practicing
+              </FilterButton>
+              <FilterButton
+                active={statusFilter === "learned"}
+                onClick={() => setStatusFilter("learned")}
+              >
+                Learned
+              </FilterButton>
+            </div>
           </div>
         </section>
 
@@ -517,7 +658,7 @@ export default function RoomPage() {
         ) : null}
 
         <div className="flex flex-col gap-4">
-          {cards.map((card) => (
+          {filteredCards.map((card) => (
             <article
               key={card.id}
               className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-stone-200"
@@ -625,6 +766,17 @@ export default function RoomPage() {
               ) : null}
             </article>
           ))}
+
+          {filteredCards.length === 0 ? (
+            <section className="rounded-3xl bg-white p-5 text-center shadow-sm ring-1 ring-stone-200">
+              <p className="text-sm font-semibold text-stone-700">
+                No cards found
+              </p>
+              <p className="mt-1 text-sm text-stone-500">
+                Change the filters or add a new card.
+              </p>
+            </section>
+          ) : null}
         </div>
       </div>
     </main>
