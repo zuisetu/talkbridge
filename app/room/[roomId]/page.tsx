@@ -60,6 +60,7 @@ type CardPayload = {
 
 type CardMode = "japanese" | "english";
 type LanguageFilter = "all" | "ja" | "en";
+type StudyLanguage = "ja" | "en";
 type StatusFilter = "all" | "new" | "practicing" | "learned";
 
 const LAST_ROOM_KEY = "talkbridge:lastRoom";
@@ -174,6 +175,12 @@ export default function RoomPage() {
   const [languageFilter, setLanguageFilter] = useState<LanguageFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
+  const [studyLanguage, setStudyLanguage] = useState<StudyLanguage>("ja");
+  const [activeStudyCardId, setActiveStudyCardId] = useState<string | null>(
+    null
+  );
+  const [showStudyAnswer, setShowStudyAnswer] = useState(false);
+
   const [isSaving, setIsSaving] = useState(false);
   const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
@@ -193,6 +200,15 @@ export default function RoomPage() {
   const [tagsText, setTagsText] = useState("");
 
   const romaji = toRomaji(japaneseText);
+
+  const jaStudyCards = cards.filter((card) => card.card_type === "japanese");
+  const enStudyCards = cards.filter((card) => card.card_type === "english");
+
+  const currentStudyCards =
+    studyLanguage === "ja" ? jaStudyCards : enStudyCards;
+
+  const activeStudyCard =
+    cards.find((card) => card.id === activeStudyCardId) ?? null;
 
   const filteredCards = cards.filter((card) => {
     const languageMatches =
@@ -228,15 +244,17 @@ export default function RoomPage() {
         console.error(cardError);
       }
 
-      setRoom(roomData);
-      setRoomMemo(roomData?.memo ?? "");
+      const loadedRoom = roomData as Room | null;
+
+      setRoom(loadedRoom);
+      setRoomMemo(loadedRoom?.memo ?? "");
       setCards((cardData ?? []) as Card[]);
       setIsLoading(false);
 
-      if (roomData) {
+      if (loadedRoom) {
         saveLastRoom({
-          id: roomData.id,
-          name: roomData.name || "TalkBridge Room",
+          id: loadedRoom.id,
+          name: loadedRoom.name || "TalkBridge Room",
         });
       }
     }
@@ -351,6 +369,31 @@ export default function RoomPage() {
       tags,
       status,
     };
+  }
+
+  function pickRandomStudyCard(language: StudyLanguage = studyLanguage) {
+    const pool =
+      language === "ja"
+        ? cards.filter((card) => card.card_type === "japanese")
+        : cards.filter((card) => card.card_type === "english");
+
+    if (pool.length === 0) {
+      setActiveStudyCardId(null);
+      setShowStudyAnswer(false);
+      return;
+    }
+
+    const candidatePool =
+      pool.length > 1
+        ? pool.filter((card) => card.id !== activeStudyCardId)
+        : pool;
+
+    const randomIndex = Math.floor(Math.random() * candidatePool.length);
+    const pickedCard = candidatePool[randomIndex];
+
+    setStudyLanguage(language);
+    setActiveStudyCardId(pickedCard.id);
+    setShowStudyAnswer(false);
   }
 
   async function copyRoomLink() {
@@ -488,6 +531,11 @@ export default function RoomPage() {
       setShowAddForm(false);
     }
 
+    if (activeStudyCardId === cardId) {
+      setActiveStudyCardId(null);
+      setShowStudyAnswer(false);
+    }
+
     setDeletingCardId(null);
   }
 
@@ -570,6 +618,181 @@ export default function RoomPage() {
               {memoMessage}
             </p>
           ) : null}
+        </section>
+
+        <section className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-stone-200">
+          <p className="text-sm font-semibold text-stone-800">Study Mode</p>
+          <p className="mt-1 text-sm leading-6 text-stone-500">
+            Pick a random saved card and review it like a flashcard.
+          </p>
+
+          <div className="mt-4 grid grid-cols-2 gap-2 rounded-2xl bg-stone-100 p-1">
+            <button
+              onClick={() => {
+                setStudyLanguage("ja");
+                setActiveStudyCardId(null);
+                setShowStudyAnswer(false);
+              }}
+              className={
+                studyLanguage === "ja"
+                  ? "rounded-xl bg-white px-3 py-2 text-sm font-semibold text-stone-900 shadow-sm"
+                  : "rounded-xl px-3 py-2 text-sm font-semibold text-stone-500"
+              }
+            >
+              JA Review
+            </button>
+            <button
+              onClick={() => {
+                setStudyLanguage("en");
+                setActiveStudyCardId(null);
+                setShowStudyAnswer(false);
+              }}
+              className={
+                studyLanguage === "en"
+                  ? "rounded-xl bg-white px-3 py-2 text-sm font-semibold text-stone-900 shadow-sm"
+                  : "rounded-xl px-3 py-2 text-sm font-semibold text-stone-500"
+              }
+            >
+              EN Review
+            </button>
+          </div>
+
+          <div className="mt-4 rounded-2xl bg-stone-50 p-4 ring-1 ring-stone-200">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">
+                {studyLanguage === "ja" ? "JA cards" : "EN cards"} ·{" "}
+                {currentStudyCards.length}
+              </p>
+
+              {activeStudyCard ? (
+                <button
+                  onClick={() =>
+                    updateCardStatus(
+                      activeStudyCard.id,
+                      activeStudyCard.status
+                    )
+                  }
+                  className="rounded-full bg-stone-100 px-3 py-1 text-xs font-semibold text-stone-600"
+                >
+                  {activeStudyCard.status}
+                </button>
+              ) : null}
+            </div>
+
+            {!activeStudyCard ? (
+              <div className="mt-4">
+                <p className="text-sm leading-6 text-stone-500">
+                  Press Start random to begin.
+                </p>
+                <button
+                  onClick={() => pickRandomStudyCard(studyLanguage)}
+                  disabled={currentStudyCards.length === 0}
+                  className="mt-4 w-full rounded-2xl bg-stone-900 px-4 py-3 text-base font-semibold text-white disabled:opacity-50"
+                >
+                  Start random
+                </button>
+              </div>
+            ) : null}
+
+            {activeStudyCard && activeStudyCard.card_type === "japanese" ? (
+              <div className="mt-4">
+                {activeStudyCard.japanese_text ? (
+                  <KanaRomajiLine text={activeStudyCard.japanese_text} />
+                ) : null}
+
+                {showStudyAnswer ? (
+                  <div className="mt-5 rounded-2xl bg-white p-4 ring-1 ring-stone-200">
+                    {activeStudyCard.english_meaning ? (
+                      <p className="text-base font-semibold text-stone-900">
+                        {activeStudyCard.english_meaning}
+                      </p>
+                    ) : null}
+
+                    {activeStudyCard.pronunciation_note ? (
+                      <p className="mt-3 text-sm leading-6 text-stone-500">
+                        {activeStudyCard.pronunciation_note}
+                      </p>
+                    ) : null}
+
+                    {activeStudyCard.usage_note ? (
+                      <p className="mt-3 text-sm leading-6 text-stone-500">
+                        {activeStudyCard.usage_note}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {activeStudyCard && activeStudyCard.card_type === "english" ? (
+              <div className="mt-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">
+                  Japanese intent
+                </p>
+
+                {activeStudyCard.japanese_intent ? (
+                  <p className="mt-2 text-base leading-7 text-stone-700">
+                    {activeStudyCard.japanese_intent}
+                  </p>
+                ) : (
+                  <p className="mt-2 text-sm leading-6 text-stone-500">
+                    No Japanese intent saved.
+                  </p>
+                )}
+
+                {showStudyAnswer ? (
+                  <div className="mt-5 rounded-2xl bg-white p-4 ring-1 ring-stone-200">
+                    {activeStudyCard.natural_english ? (
+                      <p className="text-xl font-bold leading-8 text-stone-900">
+                        {activeStudyCard.natural_english}
+                      </p>
+                    ) : null}
+
+                    {activeStudyCard.casual_english ? (
+                      <p className="mt-4 rounded-2xl bg-stone-100 px-4 py-3 text-base font-semibold leading-7 text-stone-800">
+                        {activeStudyCard.casual_english}
+                      </p>
+                    ) : null}
+
+                    {activeStudyCard.pronunciation_chunks ? (
+                      <div className="mt-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">
+                          Chunks
+                        </p>
+                        <p className="mt-1 text-sm leading-6 text-stone-600">
+                          {activeStudyCard.pronunciation_chunks}
+                        </p>
+                      </div>
+                    ) : null}
+
+                    {activeStudyCard.meaning_note ? (
+                      <p className="mt-3 text-sm leading-6 text-stone-500">
+                        {activeStudyCard.meaning_note}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {activeStudyCard ? (
+              <div className="mt-5 grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setShowStudyAnswer((current) => !current)}
+                  className="rounded-2xl bg-stone-100 px-4 py-3 text-sm font-semibold text-stone-900"
+                >
+                  {showStudyAnswer ? "Hide answer" : "Show answer"}
+                </button>
+
+                <button
+                  onClick={() => pickRandomStudyCard(studyLanguage)}
+                  className="rounded-2xl bg-stone-900 px-4 py-3 text-sm font-semibold text-white"
+                >
+                  Next random
+                </button>
+              </div>
+            ) : null}
+          </div>
         </section>
 
         <section className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-stone-200">
